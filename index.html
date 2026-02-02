@@ -78,15 +78,6 @@
       outline: none;
       color: #333;
   }
-  .sidebar-input-group button {
-      padding: 0 15px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-weight: 600;
-      cursor: pointer;
-  }
 
   .sidebar-header {
       padding: 20px 15px;
@@ -419,7 +410,7 @@
                     onChange={e => setDescription(e.target.value)}
                     placeholder="Describe Kitchen..." 
                 />
-                <button>Go</button>
+                {/* Button Removed Here */}
             </div>
          </div>
          
@@ -466,7 +457,7 @@
              
              <div className="input-label">Describe Kitchen:</div>
              <input value={description} onChange={e => setDescription(e.target.value)} />
-             <button>Generate</button>
+             {/* Button Removed Here */}
           </div>
           
           <div className="input-row">
