@@ -32,35 +32,51 @@
       z-index: 20;
   }
   
-  /* UPDATED: Wider sidebar for mobile usability */
   .sidebar.open { width: 350px; min-width: 350px; }
   .sidebar.closed { width: 0; min-width: 0; border-right: none; }
 
-  /* UPDATED: Larger header text */
+  /* UPDATED: Header is now a flex container with a back button */
   .sidebar-header {
-      padding: 20px;
+      padding: 15px;
       background: #2c3e50;
       color: white;
       font-size: 18px;
       font-weight: bold;
-      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-shrink: 0;
   }
+  
+  /* NEW: The back button inside the sidebar */
+  .sidebar-back-btn {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      display: none; /* Hidden by default on desktop */
+  }
+  .sidebar-back-btn:hover { background: rgba(255,255,255,0.25); }
 
   .sidebar-content {
       flex: 1;
       overflow-y: auto;
       padding: 15px;
+      /* iOS Momentum Scrolling */
+      -webkit-overflow-scrolling: touch; 
   }
 
   .wall-group { margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
   
-  /* UPDATED: Larger wall titles */
   .wall-title { font-size: 20px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
   .wall-badge { background: #2563eb; color: white; padding: 4px 10px; border-radius: 6px; font-size: 16px; }
   
   .cat-title { font-size: 14px; text-transform: uppercase; color: #888; font-weight: 700; margin: 12px 0 6px 0; letter-spacing: 0.5px; }
   
-  /* UPDATED: Larger tap targets for list items */
   .cab-item { 
       font-size: 16px; 
       padding: 12px 14px; 
@@ -111,7 +127,7 @@
       border: 1px solid #d1d5db; 
       border-radius: 6px; 
       font-family: 'Consolas', 'Monaco', monospace; 
-      font-size: 16px; /* 16px prevents zoom on iOS inputs */
+      font-size: 16px; 
       color: #374151; 
       outline: none; 
   }
@@ -126,12 +142,11 @@
       font-size: 14px; 
       cursor: pointer; 
       white-space: nowrap;
-      height: 44px; /* Good touch target size */
+      height: 44px; 
   }
   
   .control-panel button.secondary { background-color: #6b7280; }
   
-  /* UPDATED: Much bigger Toggle Button */
   .control-panel button.toggle-sidebar { 
       background-color: #2c3e50; 
       display: flex; 
@@ -150,7 +165,7 @@
       overflow: hidden; 
       background-image: radial-gradient(circle, #e5e7eb 1px, transparent 1px); 
       background-size: 20px 20px;
-      touch-action: none; /* CRITICAL: Allows canvas panning instead of page scroll */
+      touch-action: none; 
   }
   .viewport:active { cursor: grabbing; }
   
@@ -171,8 +186,21 @@
   
   /* Mobile adjustments */
   @media (max-width: 600px) {
-      .input-label { display: none; } /* Hide labels on very small screens to save space */
-      .sidebar.open { width: 85vw; min-width: 85vw; position: absolute; height: 100%; box-shadow: 5px 0 15px rgba(0,0,0,0.2); }
+      .input-label { display: none; } 
+      /* Sidebar overlays full screen mostly */
+      .sidebar.open { width: 100%; min-width: 100%; position: absolute; height: 100%; z-index: 999; }
+      /* Hide the main toggle button when on mobile (since we use the one inside the drawer to close) */
+      .toggle-sidebar { display: none; } 
+      /* Always show the special back button on mobile */
+      .sidebar-back-btn { display: block; }
+      
+      /* Make the "Open List" button in main view just say "List" to save space */
+      .control-panel button.toggle-sidebar-mobile { display: block; width: 100%; margin-bottom: 10px; }
+  }
+  
+  @media (min-width: 601px) {
+      /* On desktop, hide the dedicated mobile back button inside the drawer */
+      .sidebar-back-btn { display: none; }
   }
 </style>
 </head>
@@ -208,49 +236,37 @@
   const KitchenVisualizer = ({ code, setCode }) => {
     const { useState, useRef, useMemo, useEffect } = React;
     const [viewBox, setViewBox] = useState({ x: -150, y: -150, width: 300, height: 300 });
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed on mobile load, logic handles desktop
     const [description, setDescription] = useState("");
     
+    // Auto-open sidebar on Desktop, closed on Mobile
+    useEffect(() => {
+        if (window.innerWidth > 600) setSidebarOpen(true);
+    }, []);
+
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
     const svgRef = useRef(null);
-    
-    // UPDATED: Font Size calculation is now divided by 65 instead of 95 (making it ~50% bigger)
     const dynamicFontSize = viewBox.width / 65; 
     const dynamicStroke = viewBox.width / 700; 
 
-    // --- PARSE AND ORGANIZE DATA FOR LIST VIEW ---
+    // --- PARSE DATA ---
     const organizedData = useMemo(() => {
         const walls = {};
         if (!code) return walls;
-
         const items = code.replace(/;/g, '\n').split('\n').map((l, i) => {
             const p = l.trim().split('|');
             if (p.length < 2) return null;
             const c = p[1].toUpperCase();
-            
             const isUpper = (c.startsWith('W') || c.includes('WALL FILLER') || c.startsWith('DCW'));
-            
-            return {
-                wall: p[0],
-                code: p[1],
-                idx: i + 1,
-                type: isUpper ? 'upper' : 'base'
-            };
+            return { wall: p[0], code: p[1], idx: i + 1, type: isUpper ? 'upper' : 'base' };
         }).filter(Boolean);
-
         items.forEach(item => {
-            if (!walls[item.wall]) {
-                walls[item.wall] = { base: [], upper: [] };
-            }
+            if (!walls[item.wall]) walls[item.wall] = { base: [], upper: [] };
             if (item.type === 'base') walls[item.wall].base.push(item);
             else walls[item.wall].upper.push(item);
         });
-
-        return Object.keys(walls).sort().reduce((obj, key) => {
-            obj[key] = walls[key];
-            return obj;
-        }, {});
+        return Object.keys(walls).sort().reduce((obj, key) => { obj[key] = walls[key]; return obj; }, {});
     }, [code]);
 
     // --- GEOMETRY PROCESSING ---
@@ -264,161 +280,93 @@
           x2: parseFloat(p[5]), y2: -parseFloat(p[6]) 
         };
       }).filter(Boolean);
-
-      const geo = [];
-      const allSegments = [];
-
+      const geo = []; const allSegments = [];
       items.forEach((item, idx) => {
         const c = item.code.toUpperCase();
         let depth = 24, stroke = 'black', type = 'std', isUpper = false;
-        
         if (c.startsWith('W') || c.includes('WALL FILLER')) { depth = 12; stroke = 'red'; isUpper = true; }
         else if (c.startsWith('DCW')) { depth = 12; stroke = 'red'; type = 'diag'; isUpper = true; }
         else if (c.startsWith('ERB')) { depth = 24; stroke = 'black'; type = 'L'; }
-
         const P1 = {x: item.x1, y: item.y1}, P2 = {x: item.x2, y: item.y2};
         const vec = Vec.sub(P2, P1);
         if (Vec.len(vec) < 0.1) return;
-        const u = Vec.norm(vec);
-        const roomVec = { x: -u.y, y: u.x }; 
+        const u = Vec.norm(vec); const roomVec = { x: -u.y, y: u.x }; 
         let verts = [], labelPos = {x:0, y:0};
-        
-        const resolveBackDir = (uSeg, bisector) => {
-            const n1 = { x: -uSeg.y, y: uSeg.x };
-            const n2 = { x: uSeg.y, y: -uSeg.x };
-            return Vec.dot(n1, bisector) < 0 ? n1 : n2;
-        };
+        const resolveBackDir = (uSeg, bisector) => { const n1 = { x: -uSeg.y, y: uSeg.x }; const n2 = { x: uSeg.y, y: -uSeg.x }; return Vec.dot(n1, bisector) < 0 ? n1 : n2; };
         const addSeg = (s, e, normal) => { allSegments.push({ start: s, end: e, normal, isUpper, wallRef: item.wall }); };
-
         if (type === 'std') {
-           const F1 = Vec.add(P1, Vec.scale(roomVec, depth));
-           const F2 = Vec.add(P2, Vec.scale(roomVec, depth));
-           verts = [P1, P2, F2, F1];
-           const labelShift = isUpper ? 0.5 : 0.9;
-           labelPos = Vec.add(Vec.mid(P1, P2), Vec.scale(roomVec, depth * labelShift));
-           addSeg(P1, P2, Vec.scale(roomVec, -1));
+           const F1 = Vec.add(P1, Vec.scale(roomVec, depth)); const F2 = Vec.add(P2, Vec.scale(roomVec, depth));
+           verts = [P1, P2, F2, F1]; const labelShift = isUpper ? 0.5 : 0.9;
+           labelPos = Vec.add(Vec.mid(P1, P2), Vec.scale(roomVec, depth * labelShift)); addSeg(P1, P2, Vec.scale(roomVec, -1));
         } else if (type === 'L' || type === 'diag') {
-           const C1 = {x:P1.x, y:P2.y}, C2 = {x:P2.x, y:P1.y};
-           const cross = (P2.x-P1.x)*(C1.y-P2.y) - (P2.y-P1.y)*(C1.x-P2.x);
-           const C = cross < 0 ? C1 : C2;
-           const u1 = Vec.norm(Vec.sub(P1, C)), u2 = Vec.norm(Vec.sub(P2, C)); 
-           const bisector = Vec.norm(Vec.add(u1, u2));
+           const C1 = {x:P1.x, y:P2.y}, C2 = {x:P2.x, y:P1.y}; const cross = (P2.x-P1.x)*(C1.y-P2.y) - (P2.y-P1.y)*(C1.x-P2.x); const C = cross < 0 ? C1 : C2;
+           const u1 = Vec.norm(Vec.sub(P1, C)), u2 = Vec.norm(Vec.sub(P2, C)); const bisector = Vec.norm(Vec.add(u1, u2));
            const F1 = Vec.add(P1, Vec.scale(u2, depth)), F2 = Vec.add(P2, Vec.scale(u1, depth));
            if(type === 'L') { const Inner = Vec.add(C, Vec.add(Vec.scale(u1, depth), Vec.scale(u2, depth))); verts = [P1, C, P2, F2, Inner, F1]; } 
            else { verts = [P1, C, P2, F2, F1]; }
-           const labelShift = isUpper ? 0.8 : 1.4;
-           labelPos = Vec.add(C, Vec.scale(bisector, depth * labelShift));
+           const labelShift = isUpper ? 0.8 : 1.4; labelPos = Vec.add(C, Vec.scale(bisector, depth * labelShift));
            const dir1 = Vec.scale(u1, -1); const wallNormal1 = resolveBackDir(dir1, bisector); addSeg(C, P1, wallNormal1);
            const dir2 = Vec.scale(u2, -1); const wallNormal2 = resolveBackDir(dir2, bisector); addSeg(C, P2, wallNormal2);
         }
         geo.push({ id: idx, verts, labelPos, code: item.code, stroke, idx: idx+1 });
       });
-
       const wallGroups = [];
       allSegments.forEach(seg => {
-          const segVec = Vec.sub(seg.end, seg.start);
-          if (Vec.len(segVec) < 0.1) return;
-          const normal = Vec.norm(seg.normal);
-          const dist = Vec.dot(seg.start, normal);
+          const segVec = Vec.sub(seg.end, seg.start); if (Vec.len(segVec) < 0.1) return;
+          const normal = Vec.norm(seg.normal); const dist = Vec.dot(seg.start, normal);
           let match = wallGroups.find(w => Vec.dot(w.normal, normal) > 0.99 && Math.abs(w.dist - dist) < 1.0);
-          if (match) match.segments.push(seg);
-          else wallGroups.push({ normal, dist, segments: [seg], ref: seg.wallRef });
+          if (match) match.segments.push(seg); else wallGroups.push({ normal, dist, segments: [seg], ref: seg.wallRef });
       });
-
-      const dims = [];
-      const walls = [];
-
+      const dims = []; const walls = [];
       wallGroups.forEach(wall => {
-          const axis = { x: -wall.normal.y, y: wall.normal.x };
-          const proj = p => Vec.dot(p, axis);
+          const axis = { x: -wall.normal.y, y: wall.normal.x }; const proj = p => Vec.dot(p, axis);
           let minT = Infinity, maxT = -Infinity, pStart = null, pEnd = null;
-          
-          wall.segments.forEach(s => {
-             [s.start, s.end].forEach(p => {
-                 const t = proj(p);
-                 if(t < minT) { minT = t; pStart = p; }
-                 if(t > maxT) { maxT = t; pEnd = p; }
-             });
-          });
-
-          if(pStart && pEnd && Vec.dist(pStart, pEnd) > 1.0) {
-              walls.push({ p1: pStart, p2: pEnd });
-              dims.push({ p1: pStart, p2: pEnd, offset: 22, color: 'blue', text: formatDim(Vec.dist(pStart, pEnd)), normal: wall.normal, label: wall.ref });
-          }
-
+          wall.segments.forEach(s => { [s.start, s.end].forEach(p => { const t = proj(p); if(t < minT) { minT = t; pStart = p; } if(t > maxT) { maxT = t; pEnd = p; } }); });
+          if(pStart && pEnd && Vec.dist(pStart, pEnd) > 1.0) { walls.push({ p1: pStart, p2: pEnd }); dims.push({ p1: pStart, p2: pEnd, offset: 22, color: 'blue', text: formatDim(Vec.dist(pStart, pEnd)), normal: wall.normal, label: wall.ref }); }
           const makeChain = (isUp, color, offset) => {
-             const chainSegs = wall.segments.filter(s => s.isUpper === isUp);
-             if (!chainSegs.length) return;
+             const chainSegs = wall.segments.filter(s => s.isUpper === isUp); if (!chainSegs.length) return;
              const items = chainSegs.map(s => { const t1 = proj(s.start), t2 = proj(s.end); return { min: Math.min(t1,t2), max: Math.max(t1,t2), p_min: t1<t2?s.start:s.end, p_max: t1<t2?s.end:s.start }; });
              items.sort((a,b) => a.min - b.min);
              if (pStart) { const startGap = Vec.dist(pStart, items[0].p_min); if (startGap > 0.5) dims.push({ p1: pStart, p2: items[0].p_min, offset, color, text: formatDim(startGap), normal: wall.normal, isGap: true }); }
              for(let i=0; i<items.length; i++) {
-                 const curr = items[i];
-                 dims.push({ p1: curr.p_min, p2: curr.p_max, offset, color, text: formatDim(Vec.dist(curr.p_min, curr.p_max)), normal: wall.normal });
+                 const curr = items[i]; dims.push({ p1: curr.p_min, p2: curr.p_max, offset, color, text: formatDim(Vec.dist(curr.p_min, curr.p_max)), normal: wall.normal });
                  if(i < items.length-1) { const next = items[i+1]; const gap = Vec.dist(curr.p_max, next.p_min); if(gap > 0.5) dims.push({ p1: curr.p_max, p2: next.p_min, offset, color, text: formatDim(gap), normal: wall.normal, isGap: true }); }
              }
              if (pEnd) { const endGap = Vec.dist(items[items.length-1].p_max, pEnd); if (endGap > 0.5) dims.push({ p1: items[items.length-1].p_max, p2: pEnd, offset, color, text: formatDim(endGap), normal: wall.normal, isGap: true }); }
           };
-          makeChain(true, 'red', 10);
-          makeChain(false, 'black', 16);
+          makeChain(true, 'red', 10); makeChain(false, 'black', 16);
       });
-
       return { geometry: geo, dimLines: dims, wallLines: walls };
     }, [code]);
 
-    // --- ZOOM TO FIT ---
+    // --- INTERACTION ---
     useEffect(() => {
         if (!geometry.length) return;
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         geometry.forEach(g => { g.verts.forEach(v => { if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x; if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y; }); });
-        const w = maxX - minX; const h = maxY - minY;
-        if (w === 0 || h === 0) return;
-        const padding = Math.max(w, h) * 0.25; 
-        setViewBox({ x: minX - padding, y: minY - padding, width: w + (padding * 2), height: h + (padding * 2) });
+        const w = maxX - minX; const h = maxY - minY; if (w === 0 || h === 0) return;
+        const padding = Math.max(w, h) * 0.25; setViewBox({ x: minX - padding, y: minY - padding, width: w + (padding * 2), height: h + (padding * 2) });
     }, [geometry]);
 
     const handleWheel = (e) => { e.preventDefault(); const s = e.deltaY > 0 ? 1.1 : 0.9; setViewBox(v => ({ x: v.x-(v.width*(s-1))/2, y: v.y-(v.height*(s-1))/2, width: v.width*s, height: v.height*s })); };
-    
-    // --- MOUSE & TOUCH HANDLERS ---
     const handleStart = (x, y) => { isDragging.current = true; lastPos.current = { x, y }; };
     const handleEnd = () => { isDragging.current = false; };
-    const handleMove = (x, y) => {
-        if (!isDragging.current) return;
-        const r = svgRef.current.getBoundingClientRect();
-        const scaleX = viewBox.width / r.width;
-        const scaleY = viewBox.height / r.height;
-        const dx = (x - lastPos.current.x) * scaleX;
-        const dy = (y - lastPos.current.y) * scaleY;
-        setViewBox(v => ({...v, x: v.x - dx, y: v.y - dy}));
-        lastPos.current = { x, y };
-    };
-
-    const onMouseDown = (e) => handleStart(e.clientX, e.clientY);
-    const onMouseMove = (e) => handleMove(e.clientX, e.clientY);
-    const onMouseUp = () => handleEnd();
-    
-    // UPDATED: Touch Handlers
-    const onTouchStart = (e) => { 
-        if(e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY); 
-    };
-    const onTouchMove = (e) => { 
-        // preventDefault stops screen from scrolling while you drag the cabinets
-        // Note: In React 18 with passive events, touch-action: none in CSS is the key, but calling this is safe practice if passive is false
-        if(e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY); 
-    };
-    const onTouchEnd = () => handleEnd();
+    const handleMove = (x, y) => { if (!isDragging.current) return; const r = svgRef.current.getBoundingClientRect(); const scaleX = viewBox.width / r.width; const scaleY = viewBox.height / r.height; const dx = (x - lastPos.current.x) * scaleX; const dy = (y - lastPos.current.y) * scaleY; setViewBox(v => ({...v, x: v.x - dx, y: v.y - dy})); lastPos.current = { x, y }; };
 
     return (
       <>
       <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-         <div className="sidebar-header">Cabinet List</div>
+         {/* UPDATED HEADER: Includes Back button */}
+         <div className="sidebar-header">
+            <button className="sidebar-back-btn" onClick={() => setSidebarOpen(false)}>◀ Back</button>
+            <span>Cabinet List</span>
+         </div>
          <div className="sidebar-content">
             {Object.keys(organizedData).map(wallKey => (
                 <div key={wallKey} className="wall-group">
                     <div className="wall-title">
                         <span className="wall-badge">Wall {wallKey}</span>
                     </div>
-                    
                     {organizedData[wallKey].base.length > 0 && (
                         <>
                             <div className="cat-title">Base Cabinets</div>
@@ -429,7 +377,6 @@
                             ))}
                         </>
                     )}
-                    
                     {organizedData[wallKey].upper.length > 0 && (
                         <>
                             <div className="cat-title">Wall Cabinets</div>
@@ -447,21 +394,23 @@
 
       <div id="kitchen-app-container">
         <div className="control-panel">
-          {/* Describe Input */}
           <div className="input-row primary">
+             {/* Desktop Toggle Button */}
              <button className="toggle-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle List View">
                 {sidebarOpen ? '◀' : '☰ List View'}
              </button>
+             {/* Mobile Open Button (only shows when sidebar is closed) */}
+             {!sidebarOpen && (
+                 <button className="toggle-sidebar mobile-only" style={{display: window.innerWidth < 600 ? 'flex' : 'none'}} onClick={() => setSidebarOpen(true)}>
+                    ☰ List View
+                 </button>
+             )}
+             
              <div className="input-label">Describe Kitchen:</div>
-             <input 
-                value={description} 
-                onChange={e => setDescription(e.target.value)} 
-                // UPDATED: No placeholder
-             />
+             <input value={description} onChange={e => setDescription(e.target.value)} />
              <button>Generate</button>
           </div>
           
-          {/* Code Input */}
           <div className="input-row">
              <div className="input-label">Kitchen Code:</div>
              <input value={code} onChange={e => setCode(e.target.value)} />
@@ -470,20 +419,16 @@
         </div>
 
         <div className="viewport">
-          <svg ref={svgRef} 
-               viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`} 
+          <svg ref={svgRef} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`} 
                onWheel={handleWheel} 
-               onMouseDown={onMouseDown} 
-               onMouseMove={onMouseMove} 
-               onMouseUp={onMouseUp} 
-               onMouseLeave={onMouseUp}
-               // UPDATED: Touch events attached here
-               onTouchStart={onTouchStart}
-               onTouchMove={onTouchMove}
-               onTouchEnd={onTouchEnd}
+               onMouseDown={(e)=>handleStart(e.clientX, e.clientY)} 
+               onMouseMove={(e)=>handleMove(e.clientX, e.clientY)} 
+               onMouseUp={handleEnd} 
+               onMouseLeave={handleEnd}
+               onTouchStart={(e)=>{if(e.touches.length===1)handleStart(e.touches[0].clientX, e.touches[0].clientY)}}
+               onTouchMove={(e)=>{if(e.touches.length===1)handleMove(e.touches[0].clientX, e.touches[0].clientY)}}
+               onTouchEnd={handleEnd}
                >
-             
-             {/* 1. DRAW CABINETS */}
              {geometry.map(g => ( 
                <g key={g.id}> 
                  <polygon points={g.verts.map(v=>`${v.x},${v.y}`).join(' ')} fill="white" stroke={g.stroke} strokeWidth={dynamicStroke} /> 
@@ -493,18 +438,8 @@
                  </text> 
                </g> 
              ))}
-
-             {/* 2. DRAW WALLS */}
-             {wallLines.map((w, i) => (
-                 <line key={`wall-${i}`} x1={w.p1.x} y1={w.p1.y} x2={w.p2.x} y2={w.p2.y} stroke="blue" strokeWidth={dynamicStroke * 2.5} />
-             ))}
-             
-             {/* 3. DRAW DIMENSIONS */}
-             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> 
-             <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> 
-                {d.text} 
-                {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} 
-             </text> </g> ); })}
+             {wallLines.map((w, i) => ( <line key={`wall-${i}`} x1={w.p1.x} y1={w.p1.y} x2={w.p2.x} y2={w.p2.y} stroke="blue" strokeWidth={dynamicStroke * 2.5} /> ))}
+             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> {d.text} {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} </text> </g> ); })}
           </svg>
           <div className="status-overlay">Scroll to Zoom • Drag to Pan</div>
         </div>
@@ -516,7 +451,6 @@
   const App = () => {
     const defaultCode = "A|B24|-120.00|0.00|34.50|-96.00|0.00|34.50; A|SB36|-96.00|0.00|34.50|-60.00|0.00|34.50; A|ERB36|-36.00|0.00|34.50|0.00|-36.00|34.50; B|B18|0.00|-66.00|34.50|-0.00|-84.00|34.50; A|W1830|-120.00|0.00|94.96|-102.00|0.00|94.96; A|W3030|-54.00|0.00|94.96|-24.00|0.00|94.96; A|DCW2430|-24.00|0.00|94.96|0.00|-24.00|94.96; B|W1230|0.00|-24.00|94.96|-0.00|-36.00|94.96; B|W3012|0.00|-36.00|94.96|-0.00|-66.00|94.96; B|W1830|-0.00|-66.00|94.96|-0.00|-84.00|94.96; B|W3612|0.00|-84.00|94.96|-0.00|-120.00|94.96";
     const [kitchenCode, setKitchenCode] = React.useState(defaultCode);
-
     return <KitchenVisualizer code={kitchenCode} setCode={setKitchenCode} />;
   };
 
