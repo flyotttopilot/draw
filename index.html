@@ -20,27 +20,73 @@
       display: flex;
   }
 
-  /* --- 3. VISUALIZER STYLES --- */
-  #kitchen-app-container { 
-      display: flex; 
-      flex-direction: column; 
-      width: 100%; 
-      height: 100%; 
-      background-color: #ffffff; 
-  }
-
-  .controls { 
-      flex: 0 0 auto; 
-      padding: 12px 16px; 
-      background: #ffffff; 
-      border-bottom: 1px solid #e5e7eb; 
-      display: flex; 
-      gap: 12px; 
-      align-items: center; 
-      z-index: 10; 
+  /* --- 3. SIDEBAR STYLES --- */
+  .sidebar {
+      background: #f8f9fa;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      transition: width 0.3s ease, min-width 0.3s ease;
+      overflow: hidden;
   }
   
-  .controls input { 
+  .sidebar.open { width: 300px; min-width: 300px; }
+  .sidebar.closed { width: 0; min-width: 0; border-right: none; }
+
+  .sidebar-header {
+      padding: 15px;
+      background: #2c3e50;
+      color: white;
+      font-weight: bold;
+      white-space: nowrap;
+  }
+
+  .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+  }
+
+  .wall-group { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+  .wall-title { font-size: 16px; font-weight: 700; color: #333; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .wall-badge { background: #2563eb; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+  
+  .cat-title { font-size: 12px; text-transform: uppercase; color: #888; font-weight: 600; margin: 8px 0 4px 0; letter-spacing: 0.5px; }
+  .cab-item { font-size: 13px; padding: 4px 8px; background: white; border: 1px solid #eee; margin-bottom: 4px; border-radius: 4px; display: flex; justify-content: space-between; }
+  .cab-idx { font-weight: bold; color: green; margin-right: 8px; }
+
+  /* --- 4. VISUALIZER CONTAINER --- */
+  #kitchen-app-container { 
+      flex: 1;
+      display: flex; 
+      flex-direction: column; 
+      height: 100%; 
+      background-color: #ffffff; 
+      min-width: 0; /* Prevents flex overflow issues */
+  }
+
+  /* --- CONTROLS AREA --- */
+  .control-panel {
+      flex: 0 0 auto;
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+  }
+
+  .input-row {
+      padding: 8px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+  }
+  
+  .input-row.primary { background: #f0f7ff; border-bottom: 1px solid #eef2f6; }
+
+  .input-label { font-size: 12px; font-weight: 600; color: #555; width: 100px; flex-shrink: 0; }
+
+  .control-panel input { 
       flex: 1; 
       padding: 8px 12px; 
       border: 1px solid #d1d5db; 
@@ -51,7 +97,7 @@
       outline: none; 
   }
   
-  .controls button { 
+  .control-panel button { 
       padding: 8px 16px; 
       background-color: #2563eb; 
       color: white; 
@@ -60,10 +106,13 @@
       font-weight: 500; 
       font-size: 13px; 
       cursor: pointer; 
+      white-space: nowrap;
   }
   
-  .controls button.secondary { background-color: #6b7280; }
+  .control-panel button.secondary { background-color: #6b7280; }
+  .control-panel button.toggle-sidebar { background-color: #2c3e50; display: flex; align-items: center; gap: 5px; }
 
+  /* --- VIEWPORT --- */
   .viewport { 
       flex: 1 1 auto; 
       position: relative; 
@@ -73,7 +122,6 @@
       background-image: radial-gradient(circle, #e5e7eb 1px, transparent 1px); 
       background-size: 20px 20px; 
   }
-  
   .viewport:active { cursor: grabbing; }
   
   svg { width: 100%; height: 100%; display: block; }
@@ -124,11 +172,51 @@
   const KitchenVisualizer = ({ code, setCode }) => {
     const { useState, useRef, useMemo, useEffect } = React;
     const [viewBox, setViewBox] = useState({ x: -150, y: -150, width: 300, height: 300 });
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [description, setDescription] = useState("");
+    
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
     const svgRef = useRef(null);
     const dynamicFontSize = viewBox.width / 95; 
     const dynamicStroke = viewBox.width / 700; 
+
+    // --- PARSE AND ORGANIZE DATA FOR LIST VIEW ---
+    const organizedData = useMemo(() => {
+        const walls = {};
+        if (!code) return walls;
+
+        const items = code.replace(/;/g, '\n').split('\n').map((l, i) => {
+            const p = l.trim().split('|');
+            if (p.length < 2) return null;
+            const c = p[1].toUpperCase();
+            
+            // Logic to determine if Upper (Wall) or Lower (Base)
+            // Matches the drawing logic: W*, DCW*, WALL FILLER are uppers.
+            const isUpper = (c.startsWith('W') || c.includes('WALL FILLER') || c.startsWith('DCW'));
+            
+            return {
+                wall: p[0],
+                code: p[1],
+                idx: i + 1,
+                type: isUpper ? 'upper' : 'base'
+            };
+        }).filter(Boolean);
+
+        items.forEach(item => {
+            if (!walls[item.wall]) {
+                walls[item.wall] = { base: [], upper: [] };
+            }
+            if (item.type === 'base') walls[item.wall].base.push(item);
+            else walls[item.wall].upper.push(item);
+        });
+
+        // Sort keys alphabetically
+        return Object.keys(walls).sort().reduce((obj, key) => {
+            obj[key] = walls[key];
+            return obj;
+        }, {});
+    }, [code]);
 
     // --- GEOMETRY PROCESSING ---
     const { geometry, dimLines, wallLines } = useMemo(() => {
@@ -148,6 +236,8 @@
       items.forEach((item, idx) => {
         const c = item.code.toUpperCase();
         let depth = 24, stroke = 'black', type = 'std', isUpper = false;
+        
+        // --- TYPE DEFINITION LOGIC ---
         if (c.startsWith('W') || c.includes('WALL FILLER')) { depth = 12; stroke = 'red'; isUpper = true; }
         else if (c.startsWith('DCW')) { depth = 12; stroke = 'red'; type = 'diag'; isUpper = true; }
         else if (c.startsWith('ERB')) { depth = 24; stroke = 'black'; type = 'L'; }
@@ -259,19 +349,74 @@
     const handleMove = (e) => { if(!isDragging.current) return; const r = svgRef.current.getBoundingClientRect(); const scaleX = viewBox.width / r.width; const scaleY = viewBox.height / r.height; const dx = (e.clientX - lastPos.current.x) * scaleX; const dy = (e.clientY - lastPos.current.y) * scaleY; setViewBox(v => ({...v, x: v.x - dx, y: v.y - dy})); lastPos.current = {x:e.clientX, y:e.clientY}; };
 
     return (
+      <>
+      {/* SIDEBAR COMPONENT */}
+      <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+         <div className="sidebar-header">Cabinet List</div>
+         <div className="sidebar-content">
+            {Object.keys(organizedData).map(wallKey => (
+                <div key={wallKey} className="wall-group">
+                    <div className="wall-title">
+                        <span className="wall-badge">Wall {wallKey}</span>
+                    </div>
+                    
+                    {organizedData[wallKey].base.length > 0 && (
+                        <>
+                            <div className="cat-title">Base Cabinets</div>
+                            {organizedData[wallKey].base.map((item, i) => (
+                                <div key={i} className="cab-item">
+                                    <span><span className="cab-idx">({item.idx})</span> {item.code}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                    
+                    {organizedData[wallKey].upper.length > 0 && (
+                        <>
+                            <div className="cat-title">Wall Cabinets</div>
+                            {organizedData[wallKey].upper.map((item, i) => (
+                                <div key={i} className="cab-item">
+                                    <span><span className="cab-idx">({item.idx})</span> {item.code}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                </div>
+            ))}
+         </div>
+      </div>
+
       <div id="kitchen-app-container">
-        <div className="controls">
-          <input value={code} onChange={e => setCode(e.target.value)} />
-          <button onClick={() => setCode('')} className="secondary">Clear</button>
+        <div className="control-panel">
+          {/* NEW: Description Input */}
+          <div className="input-row primary">
+             <button className="toggle-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle List View">
+                {sidebarOpen ? '◀' : '☰ List View'}
+             </button>
+             <div className="input-label">Describe Kitchen:</div>
+             <input 
+                value={description} 
+                onChange={e => setDescription(e.target.value)} 
+                placeholder="e.g., L-shaped kitchen with an island, shaker style..."
+             />
+             <button>Generate</button>
+          </div>
+          
+          {/* EXISTING: Code Input */}
+          <div className="input-row">
+             <div className="input-label">Kitchen Code:</div>
+             <input value={code} onChange={e => setCode(e.target.value)} />
+             <button onClick={() => setCode('')} className="secondary">Clear</button>
+          </div>
         </div>
+
         <div className="viewport">
           <svg ref={svgRef} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`} onWheel={handleWheel} onMouseDown={e=>{isDragging.current=true;lastPos.current={x:e.clientX,y:e.clientY}}} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false} onMouseLeave={()=>isDragging.current=false}>
              
-             {/* 1. DRAW CABINETS (First layer, filled white) */}
+             {/* 1. DRAW CABINETS */}
              {geometry.map(g => ( 
                <g key={g.id}> 
                  <polygon points={g.verts.map(v=>`${v.x},${v.y}`).join(' ')} fill="white" stroke={g.stroke} strokeWidth={dynamicStroke} /> 
-                 {/* UPDATED: Split text into tspans for different coloring */}
                  <text x={g.labelPos.x} y={g.labelPos.y} fontSize={dynamicFontSize} textAnchor="middle" fontWeight="bold">
                    <tspan fill="green">({g.idx}) </tspan>
                    <tspan fill={g.stroke}>{g.code}</tspan>
@@ -279,7 +424,7 @@
                </g> 
              ))}
 
-             {/* 2. DRAW WALLS (Blue Lines ON TOP of cabinets) */}
+             {/* 2. DRAW WALLS */}
              {wallLines.map((w, i) => (
                  <line key={`wall-${i}`} x1={w.p1.x} y1={w.p1.y} x2={w.p2.x} y2={w.p2.y} stroke="blue" strokeWidth={dynamicStroke * 2.5} />
              ))}
@@ -288,21 +433,19 @@
              {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> 
              <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> 
                 {d.text} 
-                {/* UPDATED: Added fontSize multiplier to make wall label bigger */}
                 {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} 
              </text> </g> ); })}
           </svg>
           <div className="status-overlay">Scroll to Zoom • Drag to Pan</div>
         </div>
       </div>
+      </>
     );
   };
 
   // --- 3. MAIN APP COMPONENT ---
   const App = () => {
-    // Default sample data so the tool isn't blank on load
     const defaultCode = "A|B24|-120.00|0.00|34.50|-96.00|0.00|34.50; A|SB36|-96.00|0.00|34.50|-60.00|0.00|34.50; A|ERB36|-36.00|0.00|34.50|0.00|-36.00|34.50; B|B18|0.00|-66.00|34.50|-0.00|-84.00|34.50; A|W1830|-120.00|0.00|94.96|-102.00|0.00|94.96; A|W3030|-54.00|0.00|94.96|-24.00|0.00|94.96; A|DCW2430|-24.00|0.00|94.96|0.00|-24.00|94.96; B|W1230|0.00|-24.00|94.96|-0.00|-36.00|94.96; B|W3012|0.00|-36.00|94.96|-0.00|-66.00|94.96; B|W1830|-0.00|-66.00|94.96|-0.00|-84.00|94.96; B|W3612|0.00|-84.00|94.96|-0.00|-120.00|94.96";
-    
     const [kitchenCode, setKitchenCode] = React.useState(defaultCode);
 
     return <KitchenVisualizer code={kitchenCode} setCode={setKitchenCode} />;
