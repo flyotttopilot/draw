@@ -35,11 +35,12 @@
   .sidebar.open { width: 350px; min-width: 350px; }
   .sidebar.closed { width: 0; min-width: 0; border-right: none; }
 
-  /* NEW: Dedicated Mobile Top Bar for Back Button */
+  /* Mobile Top Bar for Back Button */
   .sidebar-mobile-nav {
-      background: #1a252f; /* Darker shade */
+      background: #1a252f; 
       padding: 10px 15px;
-      display: none; /* Hidden on desktop */
+      display: none; 
+      flex-shrink: 0;
   }
   
   .sidebar-back-btn {
@@ -188,14 +189,8 @@
   /* Mobile adjustments */
   @media (max-width: 600px) {
       .input-label { display: none; } 
-      
-      /* Sidebar is full screen on mobile */
       .sidebar.open { width: 100%; min-width: 100%; position: absolute; height: 100%; z-index: 999; }
-      
-      /* Show the mobile nav bar inside sidebar */
       .sidebar-mobile-nav { display: block; }
-      
-      /* Adjust main toggle button for mobile */
       .control-panel button.toggle-sidebar { width: 100%; justify-content: center; }
   }
 </style>
@@ -243,7 +238,10 @@
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
     const svgRef = useRef(null);
-    const dynamicFontSize = viewBox.width / 65; 
+    
+    // UPDATED: Font Size Logic.
+    // Divided by 50 instead of 65/95 to make text significantly larger.
+    const dynamicFontSize = viewBox.width / 50; 
     const dynamicStroke = viewBox.width / 700; 
 
     // --- PARSE DATA ---
@@ -431,7 +429,11 @@
                </g> 
              ))}
              {wallLines.map((w, i) => ( <line key={`wall-${i}`} x1={w.p1.x} y1={w.p1.y} x2={w.p2.x} y2={w.p2.y} stroke="blue" strokeWidth={dynamicStroke * 2.5} /> ))}
-             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> {d.text} {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} </text> </g> ); })}
+             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> 
+             {/* UPDATED: Measurement dimension text is dynamicFontSize * 1.2 */}
+             <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize * 1.2} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> 
+               {d.text} {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} 
+             </text> </g> ); })}
           </svg>
           <div className="status-overlay">Scroll to Zoom • Drag to Pan</div>
         </div>
