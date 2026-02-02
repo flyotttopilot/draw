@@ -268,7 +268,16 @@
           <svg ref={svgRef} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`} onWheel={handleWheel} onMouseDown={e=>{isDragging.current=true;lastPos.current={x:e.clientX,y:e.clientY}}} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false} onMouseLeave={()=>isDragging.current=false}>
              
              {/* 1. DRAW CABINETS (First layer, filled white) */}
-             {geometry.map(g => ( <g key={g.id}> <polygon points={g.verts.map(v=>`${v.x},${v.y}`).join(' ')} fill="white" stroke={g.stroke} strokeWidth={dynamicStroke} /> <text x={g.labelPos.x} y={g.labelPos.y} fontSize={dynamicFontSize} textAnchor="middle" fill={g.stroke} fontWeight="bold">({g.idx}) {g.code}</text> </g> ))}
+             {geometry.map(g => ( 
+               <g key={g.id}> 
+                 <polygon points={g.verts.map(v=>`${v.x},${v.y}`).join(' ')} fill="white" stroke={g.stroke} strokeWidth={dynamicStroke} /> 
+                 {/* UPDATED: Split text into tspans for different coloring */}
+                 <text x={g.labelPos.x} y={g.labelPos.y} fontSize={dynamicFontSize} textAnchor="middle" fontWeight="bold">
+                   <tspan fill="green">({g.idx}) </tspan>
+                   <tspan fill={g.stroke}>{g.code}</tspan>
+                 </text> 
+               </g> 
+             ))}
 
              {/* 2. DRAW WALLS (Blue Lines ON TOP of cabinets) */}
              {wallLines.map((w, i) => (
@@ -276,7 +285,12 @@
              ))}
              
              {/* 3. DRAW DIMENSIONS */}
-             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> {d.text} {d.label && <tspan fill="green" fontWeight="bold">{d.label}</tspan>} </text> </g> ); })}
+             {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> 
+             <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> 
+                {d.text} 
+                {/* UPDATED: Added fontSize multiplier to make wall label bigger */}
+                {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} 
+             </text> </g> ); })}
           </svg>
           <div className="status-overlay">Scroll to Zoom • Drag to Pan</div>
         </div>
