@@ -65,7 +65,7 @@
       display: flex;
       gap: 8px;
   }
-  .sidebar-input-group input {
+  .sidebar-input-group input, .sidebar-input-group textarea {
       flex: 1;
       padding: 10px;
       border-radius: 4px;
@@ -74,6 +74,8 @@
       font-size: 16px;
       outline: none;
       color: #333;
+      font-family: inherit;
+      resize: vertical;
   }
 
   .sidebar-header {
@@ -138,7 +140,7 @@
   .input-row.primary { background: #f0f7ff; border-bottom: 1px solid #eef2f6; padding: 15px 16px; }
   .input-label { font-size: 14px; font-weight: 600; color: #555; white-space: nowrap; }
 
-  .control-panel input { 
+  .control-panel input, .control-panel textarea { 
       flex: 1; 
       padding: 12px; 
       border: 1px solid #d1d5db; 
@@ -147,6 +149,7 @@
       font-size: 16px; 
       color: #374151; 
       outline: none; 
+      resize: vertical;
   }
   
   .control-panel button { 
@@ -244,7 +247,7 @@
     const [viewBox, setViewBox] = useState({ x: -150, y: -150, width: 300, height: 300 });
     const [sidebarOpen, setSidebarOpen] = useState(false); 
     const [description, setDescription] = useState("");
-    const [isGenerating, setIsGenerating] = useState(false); // NEW: Track server status
+    const [isGenerating, setIsGenerating] = useState(false); 
     
     useEffect(() => {
         if (window.innerWidth > 600) setSidebarOpen(true);
@@ -419,10 +422,11 @@
          <div className="sidebar-mobile-nav">
             <button className="sidebar-back-btn" onClick={() => setSidebarOpen(false)}>◀ Back to Drawing</button>
             <div className="sidebar-input-group">
-                <input 
+                <textarea 
                     value={description} 
                     onChange={e => setDescription(e.target.value)}
                     placeholder="Describe Kitchen..." 
+                    rows="3"
                 />
             </div>
          </div>
@@ -467,10 +471,16 @@
                 {sidebarOpen ? '◀' : '☰ List View'}
              </button>
              <div className="input-label">Describe Kitchen: {isGenerating && "(Generating...)"}</div>
-             <input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Wall A base 24, sink 36..." />
+             <textarea 
+                 value={description} 
+                 onChange={e => setDescription(e.target.value)} 
+                 placeholder="e.g. Wall A base 24, sink 36..." 
+                 rows="3"
+             />
           </div>
           
-          <div className="input-row">
+          {/* Hidden Kitchen Code View */}
+          <div className="input-row" style={{ display: 'none' }}>
              <div className="input-label">Kitchen Code:</div>
              <input value={code} onChange={e => setCode(e.target.value)} />
              <button onClick={() => setCode('')} className="secondary">Clear</button>
