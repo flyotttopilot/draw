@@ -275,7 +275,7 @@
             } finally {
                 setIsGenerating(false);
             }
-        }, 800);
+        }, 50);
 
         return () => clearTimeout(timer);
     }, [description, setCode]);
