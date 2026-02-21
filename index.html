@@ -191,22 +191,20 @@
               let zBottom = item.zBottom;
               let shapeHeight = item.height;
 
-              // Basic visual toe kick representation for standard base cabinets
-              if (!item.isUpper && Math.abs(zBottom) < 0.1) {
-                  shapeHeight = item.height - 4; // subtract kick height
+              // EXACT FRONT-ONLY TOE KICK
+              if (!item.isUpper && Math.abs(zBottom) < 0.1 && item.kickVerts.length > 0) {
+                  shapeHeight = item.height - 4; // subtract 4-inch kick height
                   zBottom = 4;
                   
+                  const kickShape = new THREE.Shape();
+                  item.kickVerts.forEach((v, i) => {
+                      if (i === 0) kickShape.moveTo(v.x, v.y);
+                      else kickShape.lineTo(v.x, v.y);
+                  });
+
                   const kickExtrude = { depth: 4, bevelEnabled: false };
                   const kickMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
-                  const kickMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, kickExtrude), kickMat);
-                  kickMesh.scale.set(0.95, 0.95, 1); // Shrink slightly for recessed look
-                  
-                  let cx=0, cy=0;
-                  item.verts.forEach(v => { cx+=v.x; cy+=v.y; });
-                  cx /= item.verts.length; cy /= item.verts.length;
-                  
-                  kickMesh.position.x = cx * (1 - 0.95);
-                  kickMesh.position.y = cy * (1 - 0.95);
+                  const kickMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(kickShape, kickExtrude), kickMat);
                   kickMesh.position.z = 0;
                   group.add(kickMesh);
               }
@@ -234,12 +232,9 @@
               if (length < 0.1) return;
               const wallHeight = 96;
               
-              // PlaneGeometry naturally has 0 thickness (1 vertex thick)
               const geo = new THREE.PlaneGeometry(length, wallHeight);
-              // Stand the plane up along the Z axis permanently
-              geo.rotateX(Math.PI / 2); 
+              geo.rotateX(Math.PI / 2); // Stand plane up
               
-              // Use DoubleSide so it can be seen from both sides
               const mat = new THREE.MeshLambertMaterial({ color: 0x9ca3af, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
               const mesh = new THREE.Mesh(geo, mat);
               
@@ -393,7 +388,8 @@
         const u = Vec.norm(vec); 
         const roomVec = { x: u.y, y: -u.x }; 
         
-        let verts = [], labelPos = {x:0, y:0};
+        let verts = [], kickVerts = [], labelPos = {x:0, y:0};
+        const kickDepth = 3.0; // 3-inch toe kick inset
         
         const resolveBackDir = (uSeg, bisector) => { const n1 = { x: -uSeg.y, y: uSeg.x }; const n2 = { x: uSeg.y, y: -uSeg.x }; return Vec.dot(n1, bisector) < 0 ? n1 : n2; };
         const addSeg = (s, e, normal) => { allSegments.push({ start: s, end: e, normal, isUpper, wallRef: item.wall }); };
@@ -402,23 +398,49 @@
            const F1 = Vec.add(P1, Vec.scale(roomVec, depth)); const F2 = Vec.add(P2, Vec.scale(roomVec, depth));
            verts = [P1, P2, F2, F1]; const labelShift = isUpper ? 0.5 : 0.9;
            labelPos = Vec.add(Vec.mid(P1, P2), Vec.scale(roomVec, depth * labelShift)); addSeg(P1, P2, Vec.scale(roomVec, -1));
+           
+           // Generate flush sides, inset front for toe kick
+           if (!isUpper) {
+               const kDist = depth - kickDepth;
+               const K1 = Vec.add(P1, Vec.scale(roomVec, kDist));
+               const K2 = Vec.add(P2, Vec.scale(roomVec, kDist));
+               kickVerts = [P1, P2, K2, K1];
+           }
         } else if (type === 'L' || type === 'diag') {
            const C1 = {x:P1.x, y:P2.y}, C2 = {x:P2.x, y:P1.y}; 
-           
-           // Correctly translated cross product to fix corner rotation/mirroring
            const rot1 = (C1.x - P1.x) * (P2.y - C1.y) - (C1.y - P1.y) * (P2.x - C1.x); 
            const C = rot1 < 0 ? C1 : C2;
            
            const u1 = Vec.norm(Vec.sub(P1, C)), u2 = Vec.norm(Vec.sub(P2, C)); const bisector = Vec.norm(Vec.add(u1, u2));
            const F1 = Vec.add(P1, Vec.scale(u2, depth)), F2 = Vec.add(P2, Vec.scale(u1, depth));
-           if(type === 'L') { const Inner = Vec.add(C, Vec.add(Vec.scale(u1, depth), Vec.scale(u2, depth))); verts = [P1, C, P2, F2, Inner, F1]; } 
-           else { verts = [P1, C, P2, F2, F1]; }
+           
+           if(type === 'L') { 
+               const Inner = Vec.add(C, Vec.add(Vec.scale(u1, depth), Vec.scale(u2, depth))); 
+               verts = [P1, C, P2, F2, Inner, F1]; 
+               
+               if (!isUpper) {
+                   const kDist = depth - kickDepth;
+                   const K_F1 = Vec.add(P1, Vec.scale(u2, kDist));
+                   const K_F2 = Vec.add(P2, Vec.scale(u1, kDist));
+                   const K_Inner = Vec.add(C, Vec.add(Vec.scale(u1, kDist), Vec.scale(u2, kDist)));
+                   kickVerts = [P1, C, P2, K_F2, K_Inner, K_F1];
+               }
+           } else { 
+               verts = [P1, C, P2, F2, F1]; 
+               
+               if (!isUpper) {
+                   const kDist = depth - kickDepth;
+                   const K_F1 = Vec.add(C, Vec.scale(Vec.norm(Vec.sub(F1, C)), kDist));
+                   const K_F2 = Vec.add(C, Vec.scale(Vec.norm(Vec.sub(F2, C)), kDist));
+                   kickVerts = [P1, C, P2, K_F2, K_F1];
+               }
+           }
            const labelShift = isUpper ? 0.8 : 1.4; labelPos = Vec.add(C, Vec.scale(bisector, depth * labelShift));
            addSeg(C, P1, resolveBackDir(Vec.scale(u1, -1), bisector));
            addSeg(C, P2, resolveBackDir(Vec.scale(u2, -1), bisector));
         }
 
-        geo.push({ id: idx, verts, labelPos, code: item.code, stroke, idx: idx+1, isUpper, height, zTop, zBottom });
+        geo.push({ id: idx, verts, labelPos, code: item.code, stroke, idx: idx+1, isUpper, height, zTop, zBottom, kickVerts });
       });
 
       const wallGroups = [];
