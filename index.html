@@ -511,7 +511,11 @@
         wallLines.forEach(w => { [w.p1, w.p2].forEach(v => { if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x; if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y; }); });
         
         const w = maxX - minX; const h = maxY - minY; if (w === 0 || h === 0) return;
-        const padding = Math.max(w, h) * 0.25; setViewBox({ x: minX - padding, y: minY - padding, width: w + (padding * 2), height: h + (padding * 2) });
+        
+        // --- INCREASED PADDING HERE (FROM 0.25 to 0.50) ---
+        const padding = Math.max(w, h) * 0.50; 
+        
+        setViewBox({ x: minX - padding, y: minY - padding, width: w + (padding * 2), height: h + (padding * 2) });
     }, [geometry, wallLines]);
 
     const handleWheel = (e) => { e.preventDefault(); const s = e.deltaY > 0 ? 1.1 : 0.9; setViewBox(v => ({ x: v.x-(v.width*(s-1))/2, y: v.y-(v.height*(s-1))/2, width: v.width*s, height: v.height*s })); };
