@@ -35,11 +35,10 @@
   .sidebar.open { width: 350px; min-width: 350px; }
   .sidebar.closed { width: 0; min-width: 0; border-right: none; }
 
-  /* Mobile Top Bar for Back Button + Input */
   .sidebar-mobile-nav {
       background: #1a252f; 
       padding: 10px 15px;
-      display: none; /* Hidden by default on Desktop */
+      display: none;
       flex-shrink: 0;
       flex-direction: column;
       gap: 10px;
@@ -61,9 +60,7 @@
       align-items: center;
       gap: 10px;
   }
-  .sidebar-back-btn:active { background: #2c3e50; }
 
-  /* Styling for the input inside the sidebar */
   .sidebar-input-group {
       display: flex;
       gap: 8px;
@@ -123,7 +120,6 @@
       min-width: 0;
   }
 
-  /* --- CONTROLS AREA --- */
   .control-panel {
       flex: 0 0 auto;
       background: #ffffff;
@@ -209,7 +205,6 @@
   @media (max-width: 600px) {
       .input-label { display: none; } 
       .sidebar.open { width: 100%; min-width: 100%; position: absolute; height: 100%; z-index: 999; }
-      /* FORCE FLEX DISPLAY ON MOBILE */
       .sidebar-mobile-nav { display: flex !important; } 
       .control-panel button.toggle-sidebar { width: 100%; justify-content: center; }
   }
@@ -249,10 +244,39 @@
     const [viewBox, setViewBox] = useState({ x: -150, y: -150, width: 300, height: 300 });
     const [sidebarOpen, setSidebarOpen] = useState(false); 
     const [description, setDescription] = useState("");
+    const [isGenerating, setIsGenerating] = useState(false); // NEW: Track server status
     
     useEffect(() => {
         if (window.innerWidth > 600) setSidebarOpen(true);
     }, []);
+
+    // --- LIVE UPDATE LOGIC ---
+    useEffect(() => {
+        if (!description.trim()) return;
+
+        // Debounce: Wait 800ms after last keypress before calling server
+        const timer = setTimeout(async () => {
+            setIsGenerating(true);
+            try {
+                const response = await fetch('http://64.225.60.27/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: description })
+                });
+                
+                const data = await response.json();
+                if (data.code) {
+                    setCode(data.code);
+                }
+            } catch (err) {
+                console.error("Server Connection Error:", err);
+            } finally {
+                setIsGenerating(false);
+            }
+        }, 800);
+
+        return () => clearTimeout(timer);
+    }, [description, setCode]);
 
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
@@ -279,7 +303,7 @@
         return Object.keys(walls).sort().reduce((obj, key) => { obj[key] = walls[key]; return obj; }, {});
     }, [code]);
 
-    // --- GEOMETRY PROCESSING (Restored Logic) ---
+    // --- GEOMETRY PROCESSING ---
     const { geometry, dimLines, wallLines } = useMemo(() => {
       const items = code.replace(/;/g, '\n').split('\n').map(l => {
         const p = l.trim().split('|');
@@ -327,14 +351,12 @@
         geo.push({ id: idx, verts, labelPos, code: item.code, stroke, idx: idx+1 });
       });
 
-      // --- GROUP SEGMENTS FOR DIMENSIONS AND WALL LINES (Reverted to Geometric Grouping) ---
       const wallGroups = [];
       allSegments.forEach(seg => {
           const segVec = Vec.sub(seg.end, seg.start);
           if (Vec.len(segVec) < 0.1) return;
           const normal = Vec.norm(seg.normal);
           const dist = Vec.dot(seg.start, normal);
-          // Group by geometry (normals/distance) rather than wall letter
           let match = wallGroups.find(w => Vec.dot(w.normal, normal) > 0.99 && Math.abs(w.dist - dist) < 1.0);
           if (match) match.segments.push(seg);
           else wallGroups.push({ normal, dist, segments: [seg], ref: seg.wallRef });
@@ -356,7 +378,6 @@
              }); 
           });
 
-          // DEFINE THE WALL LINE
           if(pStart && pEnd && Vec.dist(pStart, pEnd) > 1.0) { 
               walls.push({ p1: pStart, p2: pEnd }); 
               dims.push({ p1: pStart, p2: pEnd, offset: 22, color: 'blue', text: formatDim(Vec.dist(pStart, pEnd)), normal: wall.normal, label: wall.ref }); 
@@ -395,7 +416,6 @@
     return (
       <>
       <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-         {/* Sidebar Mobile Nav */}
          <div className="sidebar-mobile-nav">
             <button className="sidebar-back-btn" onClick={() => setSidebarOpen(false)}>◀ Back to Drawing</button>
             <div className="sidebar-input-group">
@@ -446,8 +466,8 @@
              <button className="toggle-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle List View">
                 {sidebarOpen ? '◀' : '☰ List View'}
              </button>
-             <div className="input-label">Describe Kitchen:</div>
-             <input value={description} onChange={e => setDescription(e.target.value)} />
+             <div className="input-label">Describe Kitchen: {isGenerating && "(Generating...)"}</div>
+             <input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Wall A base 24, sink 36..." />
           </div>
           
           <div className="input-row">
@@ -468,7 +488,6 @@
                onTouchMove={(e)=>{if(e.touches.length===1)handleMove(e.touches[0].clientX, e.touches[0].clientY)}}
                onTouchEnd={handleEnd}
                >
-             {/* 1. DRAW CABINETS (First layer, filled white) */}
              {geometry.map(g => ( 
                <g key={g.id}> 
                  <polygon points={g.verts.map(v=>`${v.x},${v.y}`).join(' ')} fill="white" stroke={g.stroke} strokeWidth={dynamicStroke} /> 
@@ -479,10 +498,8 @@
                </g> 
              ))}
 
-             {/* 2. DRAW WALLS (Blue Lines ON TOP of cabinets) */}
              {wallLines.map((w, i) => ( <line key={`wall-${i}`} x1={w.p1.x} y1={w.p1.y} x2={w.p2.x} y2={w.p2.y} stroke="blue" strokeWidth={dynamicStroke * 2.5} /> ))}
 
-             {/* 3. DRAW DIMENSIONS */}
              {dimLines.map((d, i) => { const offVec = Vec.scale(d.normal, d.offset); const p1 = Vec.add(d.p1, offVec), p2 = Vec.add(d.p2, offVec); const mid = Vec.mid(p1, p2); const delta = Vec.sub(p2, p1); let ang = Math.atan2(delta.y, delta.x) * 180 / Math.PI; if(ang > 90 || ang < -90) ang += 180; const tick = Vec.scale(d.normal, 1.5); const txtPos = Vec.add(mid, Vec.scale(d.normal, 2.5)); return ( <g key={i}> <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={d.isGap?dynamicStroke*0.8:dynamicStroke*1.2} strokeDasharray={d.isGap?"1,1":""} /> <line x1={p1.x-tick.x} y1={p1.y-tick.y} x2={p1.x+tick.x} y2={p1.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={p2.x-tick.x} y1={p2.y-tick.y} x2={p2.x+tick.x} y2={p2.y+tick.y} stroke={d.color} strokeWidth={dynamicStroke*1.2} /> <line x1={d.p1.x} y1={d.p1.y} x2={p1.x} y2={p1.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> <line x1={d.p2.x} y1={d.p2.y} x2={p2.x} y2={p2.y} stroke={d.color} strokeWidth={dynamicStroke*0.4} opacity="0.3" strokeDasharray="1,2" /> 
              <text x={txtPos.x} y={txtPos.y} fill={d.color} fontSize={dynamicFontSize * 1.2} textAnchor="middle" transform={`rotate(${ang}, ${txtPos.x}, ${txtPos.y})`}> 
                {d.text} {d.label && <tspan fill="green" fontWeight="bold" fontSize={dynamicFontSize * 1.5}> {d.label}</tspan>} 
@@ -496,8 +513,7 @@
   };
 
   const App = () => {
-    const defaultCode = "A|B24|-120.00|0.00|34.50|-96.00|0.00|34.50; A|SB36|-96.00|0.00|34.50|-60.00|0.00|34.50; A|ERB36|-36.00|0.00|34.50|0.00|-36.00|34.50; B|B18|0.00|-66.00|34.50|-0.00|-84.00|34.50; A|W1830|-120.00|0.00|94.96|-102.00|0.00|94.96; A|W3030|-54.00|0.00|94.96|-24.00|0.00|94.96; A|DCW2430|-24.00|0.00|94.96|0.00|-24.00|94.96; B|W1230|0.00|-24.00|94.96|-0.00|-36.00|94.96; B|W3012|0.00|-36.00|94.96|-0.00|-66.00|94.96; B|W1830|-0.00|-66.00|94.96|-0.00|-84.00|94.96; B|W3612|0.00|-84.00|94.96|-0.00|-120.00|94.96";
-    const [kitchenCode, setKitchenCode] = React.useState(defaultCode);
+    const [kitchenCode, setKitchenCode] = React.useState("");
     return <KitchenVisualizer code={kitchenCode} setCode={setKitchenCode} />;
   };
 
