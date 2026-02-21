@@ -87,8 +87,19 @@
       font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; height: 44px; 
   }
   .control-panel button.secondary { background-color: #6b7280; }
-  .control-panel button.toggle-view { background-color: #059669; }
-  .control-panel button.toggle-sidebar { background-color: #2c3e50; display: flex; align-items: center; gap: 8px; font-size: 16px; padding: 10px 24px; }
+  
+  /* Left Controls Button Styling */
+  .left-controls { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .control-panel button.toggle-view, .control-panel button.toggle-sidebar { 
+      background-color: #2c3e50; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      gap: 8px; 
+      font-size: 14px; 
+      padding: 10px 24px; 
+      width: 100%; 
+  }
 
   /* --- VIEWPORT --- */
   .viewport { 
@@ -111,7 +122,8 @@
       .input-label { display: none; } 
       .sidebar.open { width: 100%; min-width: 100%; position: absolute; height: 100%; z-index: 999; }
       .sidebar-mobile-nav { display: flex !important; } 
-      .control-panel button.toggle-sidebar { width: 100%; justify-content: center; }
+      .left-controls { width: 100%; }
+      .input-row.primary { flex-direction: column; align-items: stretch; }
   }
 </style>
 </head>
@@ -617,15 +629,17 @@
       <div id="kitchen-app-container">
         <div className="control-panel">
           <div className="input-row primary">
-             <button className="toggle-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle List View">
-                {sidebarOpen ? '◀' : '☰ List View'}
-             </button>
+             <div className="left-controls">
+                 <button className="toggle-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle List View">
+                    {sidebarOpen ? '◀ Close List' : '☰ List View'}
+                 </button>
+                 <button className="toggle-view" onClick={() => setIs3D(!is3D)}>
+                     {is3D ? '🔳 Switch to 2D' : '🧊 Switch to 3D'}
+                 </button>
+             </div>
+             
              <div className="input-label">Describe Kitchen:</div>
              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Wall A base 24, sink 36..." rows="3" />
-             
-             <button className="toggle-view" onClick={() => setIs3D(!is3D)}>
-                 {is3D ? 'Switch to 2D' : 'Switch to 3D'}
-             </button>
           </div>
           <div className="input-row" style={{ display: 'none' }}>
              <input value={code} onChange={e => setCode(e.target.value)} />
