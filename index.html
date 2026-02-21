@@ -190,11 +190,14 @@
 
               let zBottom = item.zBottom;
               let shapeHeight = item.height;
+              
+              // Define standard color (bases vs uppers)
+              const color = item.isUpper ? 0xfdfdfd : 0xf0f0f0;
 
               // EXACT FRONT-ONLY TOE KICK
               if (!item.isUpper && Math.abs(zBottom) < 0.1 && item.kickVerts.length > 0) {
                   shapeHeight = item.height - 4; // subtract 4-inch kick height
-                  zBottom = 4;
+                  zBottom = 4; // lift the main cabinet body
                   
                   const kickShape = new THREE.Shape();
                   item.kickVerts.forEach((v, i) => {
@@ -203,16 +206,23 @@
                   });
 
                   const kickExtrude = { depth: 4, bevelEnabled: false };
-                  const kickMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
-                  const kickMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(kickShape, kickExtrude), kickMat);
+                  // MATCH the cabinet color instead of black
+                  const kickMat = new THREE.MeshLambertMaterial({ color: color });
+                  const kickGeo = new THREE.ExtrudeGeometry(kickShape, kickExtrude);
+                  const kickMesh = new THREE.Mesh(kickGeo, kickMat);
                   kickMesh.position.z = 0;
                   group.add(kickMesh);
+                  
+                  // Add Blueprint outlines to the kick base
+                  const kickEdges = new THREE.EdgesGeometry(kickGeo);
+                  const kickLine = new THREE.LineSegments(kickEdges, new THREE.LineBasicMaterial({ color: 0x404040, linewidth: 1 }));
+                  kickLine.position.z = 0;
+                  group.add(kickLine);
               }
 
               const extrudeSettings = { depth: shapeHeight, bevelEnabled: false };
               const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
               
-              const color = item.isUpper ? 0xfdfdfd : 0xf0f0f0;
               const material = new THREE.MeshLambertMaterial({ color: color, transparent: true, opacity: 0.95 });
               const mesh = new THREE.Mesh(geometry, material);
               mesh.position.z = zBottom;
@@ -287,7 +297,7 @@
     const { useState, useRef, useMemo, useEffect } = React;
     const [viewBox, setViewBox] = useState({ x: -150, y: -150, width: 300, height: 300 });
     const [sidebarOpen, setSidebarOpen] = useState(false); 
-    const [is3D, setIs3D] = useState(false); // TOGGLE STATE
+    const [is3D, setIs3D] = useState(false); 
     const [description, setDescription] = useState("");
     
     useEffect(() => {
@@ -344,7 +354,6 @@
       (code || "").replace(/\|\|/g, '\n').replace(/;/g, '\n').split('\n').forEach(l => {
         const p = l.trim().split('|');
         if (p.length >= 8) {
-          // Y values parsed without negatives to preserve right-hand rule math
           items.push({ 
             wall: p[0], code: p[1], 
             x1: parseFloat(p[2]), y1: parseFloat(p[3]), zTop: parseFloat(p[4]),
@@ -367,6 +376,10 @@
       items.forEach((item, idx) => {
         const c = item.code.toUpperCase();
         let depth = 24, stroke = 'black', type = 'std', isUpper = false;
+        
+        // Identify Tall/Pantry Cabinets specifically
+        const isTall = c.startsWith('U') || c.includes('PANTRY') || c.includes('TALL') || c.startsWith('OVEN');
+
         if (c.startsWith('W') || c.includes('WALL FILLER')) { depth = 12; stroke = 'red'; isUpper = true; }
         else if (c.startsWith('DCW')) { depth = 12; stroke = 'red'; type = 'diag'; isUpper = true; }
         else if (c.startsWith('ERB') || c.startsWith('LSB') || c.startsWith('BBC')) { depth = 24; stroke = 'black'; type = 'L'; }
@@ -378,8 +391,18 @@
             if (match && match[0].length === 4) height = parseInt(match[0].slice(2,4));
             else if (match && match[0].length === 2) height = parseInt(match[0]);
             else height = 30; 
+        } else if (isTall) {
+            // Attempt to grab the height from a typical tall code (e.g. U2484)
+            const match = c.match(/\d{2}/g);
+            if (match && match.length > 0) height = parseInt(match[match.length - 1]);
+            else height = isNaN(item.zTop) ? 84 : item.zTop;
+            
+            // Failsafe to ensure pantries are actually tall
+            if (height < 72) height = isNaN(item.zTop) ? 84 : item.zTop;
         }
-        const zTop = isNaN(item.zTop) ? (isUpper ? 84 : 34.5) : item.zTop;
+
+        // Logic correctly pushes Tall cabinets' zBottom to 0 (floor) so toe kicks apply natively
+        const zTop = isNaN(item.zTop) ? (isUpper ? 84 : (isTall ? height : 34.5)) : item.zTop;
         const zBottom = zTop - height;
 
         const P1 = {x: item.x1, y: item.y1}, P2 = {x: item.x2, y: item.y2};
@@ -662,8 +685,8 @@
   };
 
   const App = () => {
-    // Loaded with some default demo data
-    const demoData = "Wall A|B24|0|0|34.5|24|0\nWall A|R30|24|0|34.5|54|0\nWall A|BBC36|54|0|34.5|90|0\nWall A|W2430|0|0|84|24|0\nWall A|W1830|54|0|84|72|0";
+    // Loaded with some default demo data (including a pantry!)
+    const demoData = "Wall A|B24|0|0|34.5|24|0\nWall A|R30|24|0|34.5|54|0\nWall A|U2484 PANTRY|54|0|84|78|0\nWall A|W2430|0|0|84|24|0";
     const [kitchenCode, setKitchenCode] = React.useState(demoData);
     return <KitchenVisualizer code={kitchenCode} setCode={setKitchenCode} />;
   };
