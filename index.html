@@ -257,7 +257,6 @@
     useEffect(() => {
         if (!description.trim()) return;
 
-        // Debounce: Wait 800ms after last keypress before calling server
         const timer = setTimeout(async () => {
             setIsGenerating(true);
             try {
@@ -291,18 +290,22 @@
     const organizedData = useMemo(() => {
         const walls = {};
         if (!code) return walls;
-        const items = code.replace(/;/g, '\n').split('\n').map((l, i) => {
+        
+        // Use || and ; as valid split delimiters
+        const items = code.replace(/\|\|/g, '\n').replace(/;/g, '\n').split('\n').map((l, i) => {
             const p = l.trim().split('|');
-            if (p.length < 8) return null; // Only count cabinets here
+            if (p.length < 8) return null; // Exclude explicit wall lines from the list
             const c = p[1].toUpperCase();
             const isUpper = (c.startsWith('W') || c.includes('WALL FILLER') || c.startsWith('DCW'));
             return { wall: p[0], code: p[1], idx: i + 1, type: isUpper ? 'upper' : 'base' };
         }).filter(Boolean);
+        
         items.forEach(item => {
             if (!walls[item.wall]) walls[item.wall] = { base: [], upper: [] };
             if (item.type === 'base') walls[item.wall].base.push(item);
             else walls[item.wall].upper.push(item);
         });
+        
         return Object.keys(walls).sort().reduce((obj, key) => { obj[key] = walls[key]; return obj; }, {});
     }, [code]);
 
@@ -311,8 +314,8 @@
       const items = [];
       const walls_data = [];
 
-      // Parse code explicitly for cabinets vs walls
-      (code || "").replace(/;/g, '\n').split('\n').forEach(l => {
+      // Parse code for explicit walls AND cabinets using || or ; delimiters
+      (code || "").replace(/\|\|/g, '\n').replace(/;/g, '\n').split('\n').forEach(l => {
         const p = l.trim().split('|');
         if (p.length >= 8) {
           items.push({ 
@@ -332,6 +335,7 @@
       const geo = []; 
       const allSegments = [];
 
+      // Process Cabinet Shapes
       items.forEach((item, idx) => {
         const c = item.code.toUpperCase();
         let depth = 24, stroke = 'black', type = 'std', isUpper = false;
@@ -365,6 +369,7 @@
         geo.push({ id: idx, verts, labelPos, code: item.code, stroke, idx: idx+1 });
       });
 
+      // Group Collinear Cabinet Segments (for attaching dimensions)
       const wallGroups = [];
       allSegments.forEach(seg => {
           const segVec = Vec.sub(seg.end, seg.start);
@@ -376,6 +381,31 @@
           else wallGroups.push({ normal, dist, segments: [seg], ref: seg.wallRef });
       });
 
+      // FALLBACK: If explicit walls don't exist in the code string, synthesize them implicitly
+      if (walls_data.length === 0) {
+          wallGroups.forEach(wall => {
+              const axis = { x: -wall.normal.y, y: wall.normal.x }; 
+              const proj = p => Vec.dot(p, axis);
+              let minT = Infinity, maxT = -Infinity, pStart = null, pEnd = null;
+
+              wall.segments.forEach(s => { 
+                 [s.start, s.end].forEach(p => { 
+                     const t = proj(p); 
+                     if(t < minT) { minT = t; pStart = p; } 
+                     if(t > maxT) { maxT = t; pEnd = p; } 
+                 }); 
+              });
+
+              if(pStart && pEnd && Vec.dist(pStart, pEnd) > 1.0) { 
+                  walls_data.push({
+                      wallRef: wall.ref,
+                      x1: pStart.x, y1: pStart.y,
+                      x2: pEnd.x, y2: pEnd.y
+                  });
+              }
+          });
+      }
+
       const dims = []; 
       const walls = [];
 
@@ -383,20 +413,20 @@
       walls_data.forEach(w => {
           const p1 = { x: w.x1, y: w.y1 };
           const p2 = { x: w.x2, y: w.y2 };
-          walls.push({ p1, p2 }); // For blue rendering
+          walls.push({ p1, p2 }); // For blue line rendering
 
           const wVec = Vec.sub(p2, p1);
           if (Vec.len(wVec) < 0.1) return;
           const wDir = Vec.norm(wVec);
-          let normal = { x: -wDir.y, y: wDir.x }; // default perpendicular normal
+          let normal = { x: -wDir.y, y: wDir.x }; 
 
-          // Attempt to align normal precisely with cabinets
+          // Attempt to align the dimension normal precisely with the cabinets
           for (const group of wallGroups) {
               if (Math.abs(Vec.dot(wDir, group.normal)) > 0.1) continue; 
               const cabPt = group.segments[0].start;
               const vecToWall = Vec.sub(p1, cabPt);
               const distPerp = Math.abs(Vec.dot(vecToWall, group.normal));
-              if (distPerp < 3.0) {
+              if (distPerp < 5.0) { // Tolerance increased for floating-point safety
                   normal = group.normal;
                   break;
               }
@@ -408,13 +438,13 @@
           });
       });
 
-      // 2. Make Detail Chains mapping to Explicit Walls
+      // 2. Make Detail Chains mapping to Walls
       wallGroups.forEach(wall => {
           let globalStart = null, globalEnd = null;
           const axis = { x: -wall.normal.y, y: wall.normal.x }; 
           const proj = p => Vec.dot(p, axis);
 
-          // Find the exact wall bounding line
+          // Find matching wall for starting/ending anchor points
           let matchedWall = walls_data.find(w => {
               const w1 = {x: w.x1, y: w.y1};
               const w2 = {x: w.x2, y: w.y2};
@@ -422,8 +452,10 @@
               if (Vec.len(wVec) < 0.1) return false;
               const wDir = Vec.norm(wVec);
               if (Math.abs(Vec.dot(wDir, wall.normal)) > 0.1) return false;
-              const distPerp = Math.abs(Vec.dot(Vec.sub(w1, wall.segments[0].start), wall.normal));
-              return distPerp < 2.0;
+              
+              const cabPt = wall.segments[0].start;
+              const distPerp = Math.abs(Vec.dot(Vec.sub(w1, cabPt), wall.normal));
+              return distPerp < 5.0; // Tolerance safely increased
           });
 
           if (matchedWall) {
@@ -446,10 +478,12 @@
              });
              items.sort((a,b) => a.min - b.min);
              
-             if (globalStart) { 
-                 const startGap = Vec.dist(globalStart, items[0].p_min); 
-                 if (startGap > 0.5) dims.push({ p1: globalStart, p2: items[0].p_min, offset, color, text: formatDim(startGap), normal: wall.normal, isGap: true }); 
-             }
+             // Setup reliable start/end points with or without matched explicit walls
+             let startPt = globalStart || items[0].p_min;
+             let endPt = globalEnd || items[items.length-1].p_max;
+
+             const startGap = Vec.dist(startPt, items[0].p_min); 
+             if (startGap > 0.5) dims.push({ p1: startPt, p2: items[0].p_min, offset, color, text: formatDim(startGap), normal: wall.normal, isGap: true }); 
              
              for(let i=0; i<items.length; i++) {
                  const curr = items[i]; 
@@ -461,10 +495,8 @@
                  }
              }
              
-             if (globalEnd) { 
-                 const endGap = Vec.dist(items[items.length-1].p_max, globalEnd); 
-                 if (endGap > 0.5) dims.push({ p1: items[items.length-1].p_max, p2: globalEnd, offset, color, text: formatDim(endGap), normal: wall.normal, isGap: true }); 
-             }
+             const endGap = Vec.dist(items[items.length-1].p_max, endPt); 
+             if (endGap > 0.5) dims.push({ p1: items[items.length-1].p_max, p2: endPt, offset, color, text: formatDim(endGap), normal: wall.normal, isGap: true }); 
           };
           
           makeChain(true, 'red', 10); 
