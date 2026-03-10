@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>3D House Embed</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #ffffff;
+    /* Optional: use 'transparent' if you want the host page's background to show through */
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+    cursor: grab;
+  }
+  canvas:active {
+    cursor: grabbing;
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<script>
+  // 1. Scene Setup
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xffffff); // Set to null if using transparent background
+  
+  // Set Z-axis up to match the math from the original tool
+  THREE.Object3D.DefaultUp.set(0, 0, 1);
+
+  // 2. Camera Setup
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+  camera.position.set(0, -250, 150);
+
+  // 3. Renderer Setup
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // 4. Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.target.set(0, 0, 50);
+
+  // 5. Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambientLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(50, -100, 200);
+  scene.add(dirLight);
+
+  // 6. Build the House
+  const houseGroup = new THREE.Group();
+
+  // Base
+  const baseGeo = new THREE.BoxGeometry(100, 100, 80);
+  const baseMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.z = 40; 
+  houseGroup.add(base);
+
+  // Roof
+  const roofGeo = new THREE.ConeGeometry(85, 60, 4);
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0x8b0000 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.rotation.x = Math.PI / 2; // Point Z up
+  roof.rotation.y = Math.PI / 4; // Align corners with base
+  roof.position.z = 80 + 30; // Sit on top of base
+  houseGroup.add(roof);
+
+  // Door
+  const doorGeo = new THREE.BoxGeometry(25, 5, 40);
+  const doorMat = new THREE.MeshLambertMaterial({ color: 0x4a3000 });
+  const door = new THREE.Mesh(doorGeo, doorMat);
+  door.position.set(0, -50, 20); // Front face
+  houseGroup.add(door);
+
+  // Chimney
+  const chimneyGeo = new THREE.BoxGeometry(15, 15, 40);
+  const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
+  const chimney = new THREE.Mesh(chimneyGeo, chimneyMat);
+  chimney.position.set(30, 0, 100);
+  houseGroup.add(chimney);
+
+  scene.add(houseGroup);
+
+  // 7. Animation Loop
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update(); // required if damping is enabled
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // 8. Handle Window Resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+
+</body>
+</html>
